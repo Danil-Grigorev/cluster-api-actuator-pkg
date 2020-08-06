@@ -12,10 +12,17 @@ import (
 var (
 	maoDeployment        = "machine-api-operator"
 	maoManagedDeployment = "machine-api-controllers"
+	maoManagedDaemonSet  = "machine-api-termination-handler"
 )
 
 var _ = Describe("[Feature:Operators] Machine API operator deployment should", func() {
 	defer GinkgoRecover()
+
+	BeforeEach(func() {
+		client, err := framework.LoadClient()
+		Expect(err).NotTo(HaveOccurred())
+		Expect(framework.IsStatusAvailable(client, "machine-api")).To(BeTrue())
+	})
 
 	It("be available", func() {
 		client, err := framework.LoadClient()
@@ -65,6 +72,49 @@ var _ = Describe("[Feature:Operators] Machine API operator deployment should", f
 		By(fmt.Sprintf("checking deployment %q is available again", maoManagedDeployment))
 		Expect(framework.IsDeploymentAvailable(client, maoManagedDeployment, framework.MachineAPINamespace)).To(BeTrue())
 
+	})
+
+	It("reconcile termination handler daemonSet", func() {
+		client, err := framework.LoadClient()
+		Expect(err).NotTo(HaveOccurred())
+
+		initialDaemonSet, err := framework.GetDaemonSet(client, maoManagedDaemonSet, framework.MachineAPINamespace)
+		Expect(err).NotTo(HaveOccurred())
+
+		By(fmt.Sprintf("checking daemonSet %q is available", maoManagedDaemonSet))
+		Expect(framework.IsDaemonSetAvailable(client, maoManagedDaemonSet, framework.MachineAPINamespace)).To(BeTrue())
+
+		By(fmt.Sprintf("deleting daemonSet %q", maoManagedDaemonSet))
+		Expect(framework.DeleteDaemonSet(client, initialDaemonSet)).NotTo(HaveOccurred())
+
+		By(fmt.Sprintf("checking daemonSet %q is available again", maoManagedDaemonSet))
+		Expect(framework.IsDaemonSetAvailable(client, maoManagedDaemonSet, framework.MachineAPINamespace)).To(BeTrue())
+
+		By(fmt.Sprintf("checking daemonSet %q spec matches", maoManagedDaemonSet))
+		Expect(framework.IsDaemonSetSynced(client, initialDaemonSet, maoManagedDaemonSet, framework.MachineAPINamespace)).To(BeTrue())
+	})
+
+	It("maintains termination handler daemonSet spec", func() {
+		client, err := framework.LoadClient()
+		Expect(err).NotTo(HaveOccurred())
+
+		initialDaemonSet, err := framework.GetDaemonSet(client, maoManagedDaemonSet, framework.MachineAPINamespace)
+		Expect(err).NotTo(HaveOccurred())
+
+		By(fmt.Sprintf("checking daemonSet %q is available", maoManagedDaemonSet))
+		Expect(framework.IsDaemonSetAvailable(client, maoManagedDaemonSet, framework.MachineAPINamespace)).To(BeTrue())
+
+		changedDaemonSet := initialDaemonSet.DeepCopy()
+		changedDaemonSet.Spec.Selector = nil
+
+		By(fmt.Sprintf("updating daemonSet %q", maoManagedDaemonSet))
+		Expect(framework.UpdateDaemonSet(client, maoManagedDaemonSet, framework.MachineAPINamespace, changedDaemonSet)).NotTo(HaveOccurred())
+
+		By(fmt.Sprintf("checking daemonSet %q spec matches", maoManagedDaemonSet))
+		Expect(framework.IsDaemonSetSynced(client, initialDaemonSet, maoManagedDaemonSet, framework.MachineAPINamespace)).To(BeTrue())
+
+		By(fmt.Sprintf("checking daemonSet %q is available again", maoManagedDaemonSet))
+		Expect(framework.IsDaemonSetAvailable(client, maoManagedDaemonSet, framework.MachineAPINamespace)).To(BeTrue())
 	})
 
 	It("reconcile mutating webhook configuration", func() {
